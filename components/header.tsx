@@ -1,7 +1,13 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { LoginButton } from "@/components/login-button"
+import { type User } from "@supabase/supabase-js"
 
-export function Header() {
+interface HeaderProps {
+  user?: User | null
+}
+
+export function Header({ user }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
@@ -30,6 +36,7 @@ export function Header() {
             <span className="text-base">🍌</span>
             <span className="text-banana-dark font-medium">Pro is now live</span>
           </div>
+          <LoginButton user={user} />
           <Button className="bg-banana hover:bg-banana-dark text-foreground font-medium">Try it now</Button>
         </div>
       </div>

@@ -6,11 +6,18 @@ import { Showcase } from "@/components/showcase"
 import { Reviews } from "@/components/reviews"
 import { FAQ } from "@/components/faq"
 import { Footer } from "@/components/footer"
+import { createClient } from "@/lib/supabase/server"
 
-export default function Home() {
+// 保持动态渲染
+export const dynamic = 'force-dynamic'
+
+export default async function Home() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   return (
     <main className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <Hero />
       <Generator />
       <Features />
