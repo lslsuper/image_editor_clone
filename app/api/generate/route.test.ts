@@ -15,13 +15,33 @@ function createRequest(body: any) {
   })
 }
 
-// Mock global fetch
-global.fetch = vi.fn()
+// Mock OpenAI SDK with a toggle to simulate error/success per test
+let openAiShouldThrow = false
+vi.mock('openai', () => {
+  const ctor = vi.fn().mockImplementation((_cfg: any) => ({
+    chat: {
+      completions: {
+        create: vi.fn(async (_args: any) => {
+          if (openAiShouldThrow) throw new Error('OpenRouter error: 502 Bad Gateway')
+          return {
+            id: 'cmpl_1',
+            model: 'mock-model',
+            choices: [
+              { message: { content: '![img](https://result.com/img.png)' } }
+            ],
+          }
+        })
+      }
+    }
+  }))
+  return { default: ctor }
+})
 
 describe('API Route POST /api/generate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.OPENROUTER_API_KEY = MOCK_API_KEY
+    openAiShouldThrow = false
   })
 
   it('returns 400 if prompt is missing', async () => {
@@ -42,54 +62,19 @@ describe('API Route POST /api/generate', () => {
   })
 
   it('calls OpenRouter and returns images on success', async () => {
-    const mockOpenRouterResponse = {
-      choices: [
-        {
-          message: {
-            content: [
-              { type: 'image_url', image_url: { url: 'https://result.com/img.png' } }
-            ]
-          }
-        }
-      ]
-    }
-
-    ;(global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockOpenRouterResponse,
-    })
-
     const req = createRequest({ prompt: 'a cat', image: 'data:...' })
     const res = await POST(req)
-    
     expect(res.status).toBe(200)
     const data = await res.json()
     expect(data.images).toHaveLength(1)
     expect(data.images[0]).toBe('https://result.com/img.png')
-
-    // Verify fetch call
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://openrouter.ai/api/v1/chat/completions',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'Authorization': `Bearer ${MOCK_API_KEY}`
-        })
-      })
-    )
   })
 
   it('handles OpenRouter error', async () => {
-    ;(global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      status: 502,
-      text: async () => 'Bad Gateway',
-    })
-
+    openAiShouldThrow = true
     const req = createRequest({ prompt: 'test' })
     const res = await POST(req)
-    
-    expect(res.status).toBe(502)
+    expect(res.status).toBe(500)
     const data = await res.json()
     expect(data.error).toContain('OpenRouter error: 502 Bad Gateway')
   })

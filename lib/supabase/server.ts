@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 export async function createClient() {
+  // In Next.js 15+/16, `cookies()` is async in RSC — must await before use
   const cookieStore = await cookies()
 
   return createServerClient(
@@ -13,21 +14,22 @@ export async function createClient() {
           return cookieStore.getAll()
         },
         setAll(cookiesToSet) {
+          console.log('[Supabase Server] Setting cookies:', cookiesToSet.map(c => `${c.name}`).join(', '))
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
+              // Dev environment adjustments
               if (process.env.NODE_ENV === 'development') {
-                delete options.secure
-                delete options.sameSite
-                delete options.domain 
+                options.secure = false
+                delete options.domain
+                options.sameSite = 'lax' // Explicitly set SameSite to Lax for local dev
               }
               
+              console.log(`[Supabase Server] Cookie ${name} options:`, JSON.stringify(options))
               options.path = '/'
               cookieStore.set(name, value, options)
             })
           } catch (error) {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            console.error('[Supabase Server] Error setting cookies:', error)
           }
         },
       },

@@ -1,27 +1,70 @@
-import { NextResponse } from 'next/server'
-// The client you created from the Server-Side Auth instructions
-import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-export async function GET(request: Request) {
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+function normalizeNext(nextParam: string | null) {
+  if (!nextParam) return '/'
+  return nextParam.startsWith('/') ? nextParam : '/'
+}
+
+export async function GET(request: NextRequest) {
+  console.log('[Auth Callback] Route hit')
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  // if "next" is in param, use it as the redirect URL
-  const next = searchParams.get('next') ?? '/'
+  const next = normalizeNext(searchParams.get('next'))
+
+  console.log('[Auth Callback] Code present:', !!code)
 
   if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      const forwardedHost = request.headers.get('x-forwarded-host') // original origin before load balancer
-      const isLocalEnv = process.env.NODE_ENV === 'development'
-      if (isLocalEnv) {
-        // we can be sure that there is no load balancer in between, so no need to watch for X-Forwarded-Host
-        return NextResponse.redirect(`${origin}${next}`)
-      } else if (forwardedHost) {
-        return NextResponse.redirect(`https://${forwardedHost}${next}`)
-      } else {
-        return NextResponse.redirect(`${origin}${next}`)
+    const forwardedHost = request.headers.get('x-forwarded-host')
+    const isLocalEnv = process.env.NODE_ENV === 'development'
+
+    let redirectUrl = `${origin}${next}`
+    if (!isLocalEnv && forwardedHost) {
+      redirectUrl = `https://${forwardedHost}${next}`
+    }
+
+    const response = NextResponse.redirect(redirectUrl)
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY! || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            console.log('[Auth Callback] Setting cookies:', cookiesToSet.map(c => c.name).join(', '))
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // Normalize cookie options for local dev to avoid browser rejection
+              if (process.env.NODE_ENV === 'development') {
+                options.secure = false
+                delete options.domain
+                if (options.sameSite === 'none') {
+                  options.sameSite = 'lax'
+                } else if (!options.sameSite) {
+                  options.sameSite = 'lax'
+                }
+              }
+              options.path = '/'
+              console.log(`[Auth Callback] Cookie ${name} options:`, JSON.stringify(options))
+              response.cookies.set(name, value, options)
+            })
+          },
+        },
       }
+    )
+
+    console.log('[Auth Callback] Exchanging code for session...')
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+    if (!error) {
+      console.log('[Auth Callback] Session exchange successful')
+      return response
+    } else {
+      console.error('[Auth Callback] Auth error:', error)
     }
   }
 

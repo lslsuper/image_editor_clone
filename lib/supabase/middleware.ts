@@ -25,9 +25,9 @@ export async function updateSession(request: NextRequest) {
           
           cookiesToSet.forEach(({ name, value, options }) => {
             if (process.env.NODE_ENV === 'development') {
-              delete options.secure
-              delete options.sameSite
+              options.secure = false
               delete options.domain
+              options.sameSite = 'lax'
             }
             
             options.path = '/'

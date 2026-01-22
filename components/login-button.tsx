@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { type User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
+import { logoutAction } from '@/app/auth/actions'
 import { useState, useEffect } from 'react'
 
 export function LoginButton({ user: initialUser }: { user?: User | null }) {
@@ -16,9 +17,14 @@ export function LoginButton({ user: initialUser }: { user?: User | null }) {
   useEffect(() => {
     setIsIframe(window.self !== window.top)
 
+    // Debug: Check cookies
+    console.log('[LoginButton] Document Cookies:', document.cookie)
+
     // Check initial session
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      console.log('[LoginButton] Checking session...')
+      const { data: { session }, error } = await supabase.auth.getSession()
+      console.log('[LoginButton] Session result:', session ? 'Found session' : 'No session', error || '')
       if (session?.user) {
         setUser(session.user)
       }
@@ -51,18 +57,12 @@ export function LoginButton({ user: initialUser }: { user?: User | null }) {
 
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      })
-      if (error) throw error
-    } catch (error) {
+      // Preserve the page user started on so the callback can redirect back
+      const next = `${location.pathname}${location.search || ''}`
+      const loginUrl = `/auth/login?next=${encodeURIComponent(next)}`
+      console.log('[LoginButton] Redirecting to server-side OAuth start', { loginUrl })
+      window.location.assign(loginUrl)
+    } catch (error: any) {
       console.error('Error logging in:', error)
       alert('Login error: ' + error.message)
     } finally {
@@ -73,7 +73,10 @@ export function LoginButton({ user: initialUser }: { user?: User | null }) {
   const handleLogout = async () => {
     setLoading(true)
     try {
-      await supabase.auth.signOut()
+      const { error } = await logoutAction()
+      if (error) {
+        throw new Error(error)
+      }
       setUser(null)
       router.refresh()
     } catch (error) {

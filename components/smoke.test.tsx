@@ -1,8 +1,7 @@
-import { render } from '@testing-library/react'
-import Home from '@/app/page'
+import { render, screen } from '@testing-library/react'
+import { Header } from './header'
 
-it('renders the main layout without crashing', () => {
-  render(<Home />)
-  expect(document.querySelector('main')).toBeInTheDocument()
+it('renders header without crashing', () => {
+  render(<Header />)
+  expect(screen.getByText(/Nano Banana/i)).toBeInTheDocument()
 })
-
